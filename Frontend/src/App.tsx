@@ -11,6 +11,7 @@ import { useAuth } from "./contexts/AuthContext";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import ProjectPage from "./pages/ProjectPage";
+import PersonalTodo from "./pages/PersonalTodo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,6 +66,14 @@ const App = () => (
               <ProjectPage />
             </ProtectedRoute>
           } 
+        />
+        <Route
+          path="/personal-todo"
+          element={
+            <ProtectedRoute>
+              <PersonalTodo />
+            </ProtectedRoute>
+          }
         />
         <Route path="*" element={<NotFound />} />
       </Routes>

@@ -12,7 +12,7 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle
 } from "@/components/ui/navigation-menu";
-import { LayoutDashboard, Bell, User, LogOut, X, Check } from 'lucide-react';
+import { LayoutDashboard, Bell, User, LogOut, X, Check, ListTodo } from 'lucide-react';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +61,12 @@ const Navbar: React.FC = () => {
                 <Link to="/dashboard" className={navigationMenuTriggerStyle() + " text-gray-800 hover:text-blue-500 transition-colors"}>
                   <LayoutDashboard size={16} className="mr-2" />
                   Dashboard
+                </Link>
+              </NavigationMenuItem>
+              <NavigationMenuItem>
+                <Link to="/personal-todo" className={navigationMenuTriggerStyle() + " text-gray-800 hover:text-blue-500 transition-colors"}>
+                  <ListTodo size={16} className="mr-2" />
+                  Personal Todo
                 </Link>
               </NavigationMenuItem>
             </NavigationMenuList>

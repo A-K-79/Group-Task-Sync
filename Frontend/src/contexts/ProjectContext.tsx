@@ -22,6 +22,20 @@ export interface Task {
   priority: 'low' | 'medium' | 'high'; // New: task priority
 }
 
+export interface PersonalTask {
+  id: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  createdAt: string;
+}
+
+export interface AssignedProjectTask {
+  projectId: string;
+  projectName: string;
+  task: Task;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -35,6 +49,8 @@ export interface Project {
 interface ProjectContextType {
   projects: Project[];
   notifications: Notification[];
+  personalTasks: PersonalTask[];
+  assignedProjectTasks: AssignedProjectTask[];
   createProject: (name: string, description: string) => void;
   editProject: (projectId: string, name: string, description: string) => boolean;
   addMemberToProject: (projectId: string, memberEmail: string) => void;
@@ -57,6 +73,11 @@ interface ProjectContextType {
   ) => boolean;
   deleteTask: (projectId: string, taskId: string) => void;
   completeTask: (projectId: string, taskId: string) => void;
+  completeAssignedTask: (projectId: string, taskId: string) => boolean;
+  createPersonalTask: (title: string, description?: string) => void;
+  editPersonalTask: (taskId: string, title: string, description: string) => boolean;
+  togglePersonalTask: (taskId: string) => void;
+  deletePersonalTask: (taskId: string) => void;
   markNotificationAsRead: (notificationId: string) => void;
   clearReadNotifications: () => void;
   hasUnreadNotifications: boolean;
@@ -76,6 +97,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([]);
 
   useEffect(() => {
     // Load projects from localStorage
@@ -88,10 +110,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const storedNotifications = localStorage.getItem(`notifications-${user.id}`);
       if (storedNotifications) {
         setNotifications(JSON.parse(storedNotifications));
+      } else {
+        setNotifications([]);
+      }
+
+      const storedPersonalTasks = localStorage.getItem(`personalTasks-${user.id}`);
+      if (storedPersonalTasks) {
+        setPersonalTasks(JSON.parse(storedPersonalTasks));
+      } else {
+        setPersonalTasks([]);
       }
     } else {
       setProjects([]);
       setNotifications([]);
+      setPersonalTasks([]);
     }
   }, [user]);
 
@@ -108,6 +140,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       localStorage.setItem(`notifications-${user.id}`, JSON.stringify(notifications));
     }
   }, [notifications, user]);
+
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(`personalTasks-${user.id}`, JSON.stringify(personalTasks));
+    }
+  }, [personalTasks, user]);
 
   const createProject = (name: string, description: string) => {
     if (!user) return;
@@ -402,6 +440,83 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
   };
 
+  const completeAssignedTask = (projectId: string, taskId: string) => {
+    if (!user) return false;
+
+    const project = projects.find(p => p.id === projectId);
+    const task = project?.tasks.find(t => t.id === taskId);
+
+    if (!task || task.assignedTo !== user.id) {
+      return false;
+    }
+
+    completeTask(projectId, taskId);
+    return true;
+  };
+
+  const createPersonalTask = (title: string, description: string = '') => {
+    if (!user) return;
+
+    const newTask: PersonalTask = {
+      id: `personal-task-${Date.now()}`,
+      title,
+      description,
+      completed: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setPersonalTasks([...personalTasks, newTask]);
+
+    toast({
+      title: 'Personal task created',
+      description: `Task "${title}" was added to your personal list`,
+    });
+  };
+
+  const editPersonalTask = (taskId: string, title: string, description: string) => {
+    if (!user) return false;
+
+    const taskExists = personalTasks.some(task => task.id === taskId);
+    if (!taskExists) return false;
+
+    setPersonalTasks(personalTasks.map(task =>
+      task.id === taskId
+        ? { ...task, title, description }
+        : task
+    ));
+
+    toast({
+      title: 'Personal task updated',
+      description: `Task "${title}" was updated`,
+    });
+
+    return true;
+  };
+
+  const togglePersonalTask = (taskId: string) => {
+    if (!user) return;
+
+    setPersonalTasks(personalTasks.map(task =>
+      task.id === taskId
+        ? { ...task, completed: !task.completed }
+        : task
+    ));
+  };
+
+  const deletePersonalTask = (taskId: string) => {
+    if (!user) return;
+
+    const taskToDelete = personalTasks.find(task => task.id === taskId);
+    if (!taskToDelete) return;
+
+    setPersonalTasks(personalTasks.filter(task => task.id !== taskId));
+
+    toast({
+      title: 'Personal task deleted',
+      description: `Task "${taskToDelete.title}" was removed from your personal list`,
+    });
+  };
+
   const markNotificationAsRead = (notificationId: string) => {
     if (!user) return;
     
@@ -426,10 +541,23 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const hasUnreadNotifications = notifications.some(notification => !notification.read);
+  const assignedProjectTasks = user
+    ? projects.flatMap(project =>
+        project.tasks
+          .filter(task => task.assignedTo === user.id)
+          .map(task => ({
+            projectId: project.id,
+            projectName: project.name,
+            task,
+          }))
+      )
+    : [];
 
   const value = {
     projects,
     notifications,
+    personalTasks,
+    assignedProjectTasks,
     createProject,
     editProject,
     addMemberToProject,
@@ -437,6 +565,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     editTask,
     deleteTask,
     completeTask,
+    completeAssignedTask,
+    createPersonalTask,
+    editPersonalTask,
+    togglePersonalTask,
+    deletePersonalTask,
     markNotificationAsRead,
     clearReadNotifications,
     hasUnreadNotifications,
