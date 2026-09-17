@@ -7,7 +7,6 @@ import { useProjects, Task } from '@/contexts/ProjectContext';
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface TaskCardProps {
   task: Task;
@@ -19,12 +18,12 @@ interface TaskCardProps {
 const TaskCard: React.FC<TaskCardProps> = ({ task, projectId, onEdit, isAdmin = false }) => {
   const { completeTask, deleteTask } = useProjects();
 
-  const handleComplete = () => {
-    completeTask(projectId, task.id);
+  const handleComplete = async () => {
+    await completeTask(projectId, task.id);
   };
 
-  const handleDelete = () => {
-    deleteTask(projectId, task.id);
+  const handleDelete = async () => {
+    await deleteTask(projectId, task.id);
   };
 
   const handleEdit = () => {
@@ -46,16 +45,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, projectId, onEdit, isAdmin = 
     }
   };
 
-  // Get assigned user name
-  const getAssignedUserName = () => {
-    if (!task.assignedTo) return null;
-    
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const assignedUser = users.find((u: any) => u.id === task.assignedTo);
-    return assignedUser ? assignedUser.name : 'Unknown User';
-  };
-
-  const assignedUserName = getAssignedUserName();
+  const assignedUserName = task.assignedToName || null;
   
   // Safely capitalize priority, ensuring it exists
   const capitalizedPriority = task.priority 

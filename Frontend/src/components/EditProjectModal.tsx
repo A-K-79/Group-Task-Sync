@@ -60,9 +60,9 @@ const EditProjectModal: React.FC<EditProjectModalProps> = ({
     }
   }, [project, form]);
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (project) {
-      const success = editProject(
+      const success = await editProject(
         project.id,
         values.name,
         values.description

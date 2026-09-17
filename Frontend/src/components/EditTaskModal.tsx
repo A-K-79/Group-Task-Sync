@@ -87,9 +87,9 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
     }
   }, [task, form]);
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (task) {
-      const success = editTask(
+      const success = await editTask(
         projectId,
         task.id,
         values.title,

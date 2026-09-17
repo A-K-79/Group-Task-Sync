@@ -72,12 +72,12 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     },
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    createTask(
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    await createTask(
       projectId, 
       values.title, 
       values.description,
-      values.assignedTo,
+      values.assignedTo === 'unassigned' ? undefined : values.assignedTo,
       values.dueDate?.toISOString(),
       values.priority
     );

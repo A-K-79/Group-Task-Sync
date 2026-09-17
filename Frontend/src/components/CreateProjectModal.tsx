@@ -45,8 +45,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
     },
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    createProject(values.name, values.description);
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    await createProject(values.name, values.description);
     form.reset();
     onClose();
   };
