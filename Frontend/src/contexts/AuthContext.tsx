@@ -1,6 +1,6 @@
-
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/api';
 
 interface User {
   id: string;
@@ -8,12 +8,18 @@ interface User {
   email: string;
 }
 
+interface AuthResponse {
+  token: string;
+  user: User;
+}
+
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (name: string, email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,45 +34,50 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const storedToken = localStorage.getItem('auth-token');
+    if (!storedToken) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    const bootstrap = async () => {
+      try {
+        const response = await apiRequest<{ user: User }>('/auth/me', { token: storedToken });
+        setToken(storedToken);
+        setUser(response.user);
+      } catch {
+        localStorage.removeItem('auth-token');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    bootstrap();
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      // In a real app, this would be an API call to a backend
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      const foundUser = users.find((u: any) => u.email === email && u.password === password);
-      
-      if (foundUser) {
-        const { password, ...userWithoutPassword } = foundUser;
-        setUser(userWithoutPassword);
-        localStorage.setItem('user', JSON.stringify(userWithoutPassword));
-        toast({
-          title: 'Login successful',
-          description: `Welcome back, ${foundUser.name}!`,
-        });
-        return true;
-      } else {
-        toast({
-          title: 'Login failed',
-          description: 'Invalid email or password',
-          variant: 'destructive',
-        });
-        return false;
-      }
-    } catch (error) {
-      console.error('Login error:', error);
+      const response = await apiRequest<AuthResponse>('/auth/login', {
+        method: 'POST',
+        body: { email, password },
+      });
+      setUser(response.user);
+      setToken(response.token);
+      localStorage.setItem('auth-token', response.token);
       toast({
-        title: 'Login error',
-        description: 'An unexpected error occurred',
+        title: 'Login successful',
+        description: `Welcome back, ${response.user.name}!`,
+      });
+      return true;
+    } catch (error) {
+      toast({
+        title: 'Login failed',
+        description: error instanceof Error ? error.message : 'Invalid email or password',
         variant: 'destructive',
       });
       return false;
@@ -78,42 +89,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (name: string, email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      // In a real app, this would be an API call to a backend
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      
-      if (users.some((u: any) => u.email === email)) {
-        toast({
-          title: 'Signup failed',
-          description: 'Email already in use',
-          variant: 'destructive',
-        });
-        return false;
-      }
-      
-      const newUser = {
-        id: `user-${Date.now()}`,
-        name,
-        email,
-        password,
-      };
-      
-      users.push(newUser);
-      localStorage.setItem('users', JSON.stringify(users));
-      
-      const { password: _, ...userWithoutPassword } = newUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('user', JSON.stringify(userWithoutPassword));
-      
+      const response = await apiRequest<AuthResponse>('/auth/signup', {
+        method: 'POST',
+        body: { name, email, password },
+      });
+      setUser(response.user);
+      setToken(response.token);
+      localStorage.setItem('auth-token', response.token);
       toast({
         title: 'Signup successful',
-        description: `Welcome, ${name}!`,
+        description: `Welcome, ${response.user.name}!`,
       });
       return true;
     } catch (error) {
-      console.error('Signup error:', error);
       toast({
-        title: 'Signup error',
-        description: 'An unexpected error occurred',
+        title: 'Signup failed',
+        description: error instanceof Error ? error.message : 'Could not create account',
         variant: 'destructive',
       });
       return false;
@@ -122,17 +113,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-    toast({
-      title: 'Logged out',
-      description: 'You have been successfully logged out',
-    });
+  const logout = async () => {
+    const currentToken = token || localStorage.getItem('auth-token');
+    try {
+      if (currentToken) {
+        await apiRequest('/auth/logout', {
+          method: 'POST',
+          token: currentToken,
+        });
+      }
+    } catch {
+      // Ignore network errors on logout and clear client state anyway.
+    } finally {
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem('auth-token');
+      toast({
+        title: 'Logged out',
+        description: 'You have been successfully logged out',
+      });
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

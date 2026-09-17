@@ -40,8 +40,8 @@ const Navbar: React.FC = () => {
   } = useProjects();
   const [notificationOpen, setNotificationOpen] = useState(false);
 
-  const handleNotificationClick = (notificationId: string) => {
-    markNotificationAsRead(notificationId);
+  const handleNotificationClick = async (notificationId: string) => {
+    await markNotificationAsRead(notificationId);
   };
   
   if (!user) return null; // Don't show navbar for non-authenticated users
@@ -89,7 +89,7 @@ const Navbar: React.FC = () => {
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  onClick={clearReadNotifications}
+                  onClick={() => void clearReadNotifications()}
                   disabled={!notifications.some(n => n.read)}
                 >
                   Clear read
@@ -125,7 +125,7 @@ const Navbar: React.FC = () => {
                             variant="ghost" 
                             size="icon" 
                             className="h-6 w-6"
-                            onClick={() => handleNotificationClick(notification.id)}
+                            onClick={() => void handleNotificationClick(notification.id)}
                           >
                             <X size={14} />
                           </Button>
@@ -149,7 +149,7 @@ const Navbar: React.FC = () => {
               <DropdownMenuItem className="font-medium">{user.name}</DropdownMenuItem>
               <DropdownMenuItem className="text-gray-500 text-sm">{user.email}</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={logout} className="text-red-500 cursor-pointer">
+              <DropdownMenuItem onClick={() => void logout()} className="text-red-500 cursor-pointer">
                 <LogOut size={16} className="mr-2" />
                 Logout
               </DropdownMenuItem>

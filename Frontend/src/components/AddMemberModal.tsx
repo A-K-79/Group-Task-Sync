@@ -43,10 +43,12 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ projectId, isOpen, onCl
     },
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    addMemberToProject(projectId, values.email);
-    form.reset();
-    onClose();
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    const success = await addMemberToProject(projectId, values.email);
+    if (success) {
+      form.reset();
+      onClose();
+    }
   };
 
   return (

@@ -1,6 +1,7 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { toast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/api';
 
 export interface Notification {
   id: string;
@@ -17,9 +18,10 @@ export interface Task {
   createdBy: string;
   completedBy?: string;
   createdAt: string;
-  assignedTo?: string; // New: user ID the task is assigned to
-  dueDate?: string;    // New: due date for the task
-  priority: 'low' | 'medium' | 'high'; // New: task priority
+  assignedTo?: string;
+  assignedToName?: string;
+  dueDate?: string;
+  priority: 'low' | 'medium' | 'high';
 }
 
 export interface PersonalTask {
@@ -43,6 +45,7 @@ export interface Project {
   createdAt: string;
   adminId: string;
   members: string[];
+  memberDetails: { id: string; name: string; email: string }[];
   tasks: Task[];
 }
 
@@ -51,17 +54,17 @@ interface ProjectContextType {
   notifications: Notification[];
   personalTasks: PersonalTask[];
   assignedProjectTasks: AssignedProjectTask[];
-  createProject: (name: string, description: string) => void;
-  editProject: (projectId: string, name: string, description: string) => boolean;
-  addMemberToProject: (projectId: string, memberEmail: string) => void;
+  createProject: (name: string, description: string) => Promise<void>;
+  editProject: (projectId: string, name: string, description: string) => Promise<boolean>;
+  addMemberToProject: (projectId: string, memberEmail: string) => Promise<boolean>;
   createTask: (
-    projectId: string, 
-    title: string, 
+    projectId: string,
+    title: string,
     description: string,
     assignedTo?: string,
     dueDate?: string,
     priority?: 'low' | 'medium' | 'high'
-  ) => void;
+  ) => Promise<void>;
   editTask: (
     projectId: string,
     taskId: string,
@@ -70,16 +73,16 @@ interface ProjectContextType {
     assignedTo?: string,
     dueDate?: string,
     priority?: 'low' | 'medium' | 'high'
-  ) => boolean;
-  deleteTask: (projectId: string, taskId: string) => void;
-  completeTask: (projectId: string, taskId: string) => void;
-  completeAssignedTask: (projectId: string, taskId: string) => boolean;
-  createPersonalTask: (title: string, description?: string) => void;
-  editPersonalTask: (taskId: string, title: string, description: string) => boolean;
-  togglePersonalTask: (taskId: string) => void;
-  deletePersonalTask: (taskId: string) => void;
-  markNotificationAsRead: (notificationId: string) => void;
-  clearReadNotifications: () => void;
+  ) => Promise<boolean>;
+  deleteTask: (projectId: string, taskId: string) => Promise<void>;
+  completeTask: (projectId: string, taskId: string) => Promise<void>;
+  completeAssignedTask: (projectId: string, taskId: string) => Promise<boolean>;
+  createPersonalTask: (title: string, description?: string) => Promise<void>;
+  editPersonalTask: (taskId: string, title: string, description: string) => Promise<boolean>;
+  togglePersonalTask: (taskId: string) => Promise<void>;
+  deletePersonalTask: (taskId: string) => Promise<void>;
+  markNotificationAsRead: (notificationId: string) => Promise<void>;
+  clearReadNotifications: () => Promise<void>;
   hasUnreadNotifications: boolean;
 }
 
@@ -94,235 +97,153 @@ export const useProjects = () => {
 };
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([]);
 
-  useEffect(() => {
-    // Load projects from localStorage
-    if (user) {
-      const storedProjects = localStorage.getItem('projects');
-      if (storedProjects) {
-        setProjects(JSON.parse(storedProjects));
-      }
-
-      const storedNotifications = localStorage.getItem(`notifications-${user.id}`);
-      if (storedNotifications) {
-        setNotifications(JSON.parse(storedNotifications));
-      } else {
-        setNotifications([]);
-      }
-
-      const storedPersonalTasks = localStorage.getItem(`personalTasks-${user.id}`);
-      if (storedPersonalTasks) {
-        setPersonalTasks(JSON.parse(storedPersonalTasks));
-      } else {
-        setPersonalTasks([]);
-      }
-    } else {
+  const fetchData = async () => {
+    if (!token || !user) {
       setProjects([]);
       setNotifications([]);
       setPersonalTasks([]);
+      return;
     }
-  }, [user]);
 
-  useEffect(() => {
-    // Save projects to localStorage when they change
-    if (user && projects.length > 0) {
-      localStorage.setItem('projects', JSON.stringify(projects));
+    try {
+      const [projectsData, notificationsData, personalTasksData] = await Promise.all([
+        apiRequest<Project[]>('/projects', { token }),
+        apiRequest<Notification[]>('/notifications', { token }),
+        apiRequest<PersonalTask[]>('/personal-tasks', { token }),
+      ]);
+      setProjects(projectsData);
+      setNotifications(notificationsData);
+      setPersonalTasks(personalTasksData);
+    } catch (error) {
+      toast({
+        title: 'Sync error',
+        description: error instanceof Error ? error.message : 'Failed to load data',
+        variant: 'destructive',
+      });
     }
-  }, [projects, user]);
-
-  useEffect(() => {
-    // Save notifications to localStorage when they change
-    if (user && notifications.length > 0) {
-      localStorage.setItem(`notifications-${user.id}`, JSON.stringify(notifications));
-    }
-  }, [notifications, user]);
-
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem(`personalTasks-${user.id}`, JSON.stringify(personalTasks));
-    }
-  }, [personalTasks, user]);
-
-  const createProject = (name: string, description: string) => {
-    if (!user) return;
-
-    const newProject: Project = {
-      id: `project-${Date.now()}`,
-      name,
-      description,
-      createdAt: new Date().toISOString(),
-      adminId: user.id,
-      members: [user.id],
-      tasks: [],
-    };
-
-    setProjects([...projects, newProject]);
-    
-    toast({
-      title: 'Project created',
-      description: `Project "${name}" has been created successfully`,
-    });
   };
 
-  const editProject = (projectId: string, name: string, description: string) => {
-    if (!user) return false;
+  useEffect(() => {
+    fetchData();
+  }, [token, user]);
 
-    const projectToEdit = projects.find(p => p.id === projectId);
-    
-    // Check if user is admin
-    if (!projectToEdit || projectToEdit.adminId !== user.id) {
+  const createProject = async (name: string, description: string) => {
+    if (!token) return;
+    try {
+      const created = await apiRequest<Project>('/projects', {
+        method: 'POST',
+        token,
+        body: { name, description },
+      });
+      setProjects(prev => [...prev, created]);
+      toast({
+        title: 'Project created',
+        description: `Project "${name}" has been created successfully`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Create failed',
+        description: error instanceof Error ? error.message : 'Failed to create project',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const editProject = async (projectId: string, name: string, description: string) => {
+    if (!token) return false;
+    try {
+      const updated = await apiRequest<Project>(`/projects/${projectId}`, {
+        method: 'PATCH',
+        token,
+        body: { name, description },
+      });
+      setProjects(prev => prev.map(project => (project.id === projectId ? updated : project)));
+      toast({
+        title: 'Project updated',
+        description: `Project "${name}" has been updated successfully`,
+      });
+      return true;
+    } catch (error) {
       toast({
         title: 'Permission denied',
-        description: 'Only the project admin can edit project details',
+        description: error instanceof Error ? error.message : 'Failed to update project',
         variant: 'destructive',
       });
       return false;
     }
-
-    setProjects(projects.map(project => {
-      if (project.id === projectId) {
-        const updatedProject = {
-          ...project,
-          name,
-          description
-        };
-        
-        toast({
-          title: 'Project updated',
-          description: `Project "${name}" has been updated successfully`,
-        });
-        
-        return updatedProject;
-      }
-      return project;
-    }));
-    
-    return true;
   };
 
-  const addMemberToProject = (projectId: string, memberEmail: string) => {
-    if (!user) return;
-
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const userToAdd = users.find((u: any) => u.email === memberEmail);
-    
-    if (!userToAdd) {
+  const addMemberToProject = async (projectId: string, memberEmail: string) => {
+    if (!token) return false;
+    try {
+      const updated = await apiRequest<Project>(`/projects/${projectId}/add-member`, {
+        method: 'POST',
+        token,
+        body: { email: memberEmail },
+      });
+      setProjects(prev => prev.map(project => (project.id === projectId ? updated : project)));
+      const addedMember = updated.memberDetails.find(member => member.email === memberEmail);
       toast({
-        title: 'User not found',
-        description: `No user found with email: ${memberEmail}`,
+        title: 'Member added',
+        description: `${addedMember?.name || memberEmail} has been added to the project`,
+      });
+      return true;
+    } catch (error) {
+      toast({
+        title: 'Add member failed',
+        description: error instanceof Error ? error.message : 'Could not add member',
         variant: 'destructive',
       });
-      return;
+      return false;
     }
-
-    setProjects(projects.map(project => {
-      if (project.id === projectId) {
-        // Check if user is already a member
-        if (project.members.includes(userToAdd.id)) {
-          toast({
-            title: 'Member exists',
-            description: `${userToAdd.name} is already a member of this project`,
-            variant: 'destructive',
-          });
-          return project;
-        }
-        
-        // Add user to project
-        const updatedProject = {
-          ...project,
-          members: [...project.members, userToAdd.id]
-        };
-        
-        // Create notification for the added user
-        const newNotification: Notification = {
-          id: `notification-${Date.now()}`,
-          message: `You were added to project "${project.name}"`,
-          createdAt: new Date().toISOString(),
-          read: false,
-        };
-        
-        // Store notification for the added user
-        const userNotifications = JSON.parse(localStorage.getItem(`notifications-${userToAdd.id}`) || '[]');
-        localStorage.setItem(
-          `notifications-${userToAdd.id}`, 
-          JSON.stringify([...userNotifications, newNotification])
-        );
-        
-        toast({
-          title: 'Member added',
-          description: `${userToAdd.name} has been added to the project`,
-        });
-        
-        return updatedProject;
-      }
-      return project;
-    }));
   };
 
-  const createTask = (
-    projectId: string, 
-    title: string, 
+  const createTask = async (
+    projectId: string,
+    title: string,
     description: string,
     assignedTo?: string,
     dueDate?: string,
     priority: 'low' | 'medium' | 'high' = 'medium'
   ) => {
-    if (!user) return;
-
-    setProjects(projects.map(project => {
-      if (project.id === projectId) {
-        const newTask: Task = {
-          id: `task-${Date.now()}`,
+    if (!token) return;
+    try {
+      const newTask = await apiRequest<Task>(`/projects/${projectId}/tasks`, {
+        method: 'POST',
+        token,
+        body: {
           title,
           description,
-          completed: false,
-          createdBy: user.id,
-          createdAt: new Date().toISOString(),
-          assignedTo,
-          dueDate,
+          assignedTo: assignedTo === 'unassigned' ? null : assignedTo,
+          dueDate: dueDate || null,
           priority,
-        };
-        
-        const updatedProject = {
-          ...project,
-          tasks: [...project.tasks, newTask]
-        };
-        
-        // Create notifications for all project members except the task creator
-        project.members.forEach(memberId => {
-          if (memberId !== user.id) {
-            const newNotification: Notification = {
-              id: `notification-${Date.now()}-${memberId}`,
-              message: `New task "${title}" was added to project "${project.name}"`,
-              createdAt: new Date().toISOString(),
-              read: false,
-            };
-            
-            // Store notification for each member
-            const memberNotifications = JSON.parse(localStorage.getItem(`notifications-${memberId}`) || '[]');
-            localStorage.setItem(
-              `notifications-${memberId}`, 
-              JSON.stringify([...memberNotifications, newNotification])
-            );
-          }
-        });
-        
-        toast({
-          title: 'Task created',
-          description: `Task "${title}" has been created successfully`,
-        });
-        
-        return updatedProject;
-      }
-      return project;
-    }));
+        },
+      });
+      setProjects(prev =>
+        prev.map(project =>
+          project.id === projectId ? { ...project, tasks: [...project.tasks, newTask] } : project
+        )
+      );
+      toast({
+        title: 'Task created',
+        description: `Task "${title}" has been created successfully`,
+      });
+      fetchData();
+    } catch (error) {
+      toast({
+        title: 'Create task failed',
+        description: error instanceof Error ? error.message : 'Could not create task',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const editTask = (
+  const editTask = async (
     projectId: string,
     taskId: string,
     title: string,
@@ -331,227 +252,259 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     dueDate?: string,
     priority: 'low' | 'medium' | 'high' = 'medium'
   ) => {
-    if (!user) return false;
-
-    const projectToEdit = projects.find(p => p.id === projectId);
-    
-    // Check if user is admin
-    if (!projectToEdit || projectToEdit.adminId !== user.id) {
+    if (!token) return false;
+    try {
+      const updated = await apiRequest<Task>(`/projects/${projectId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        token,
+        body: {
+          title,
+          description,
+          assignedTo: assignedTo === 'unassigned' ? null : assignedTo || null,
+          dueDate: dueDate || null,
+          priority,
+        },
+      });
+      setProjects(prev =>
+        prev.map(project =>
+          project.id === projectId
+            ? {
+                ...project,
+                tasks: project.tasks.map(task => (task.id === taskId ? updated : task)),
+              }
+            : project
+        )
+      );
+      toast({
+        title: 'Task updated',
+        description: `Task "${title}" has been updated successfully`,
+      });
+      return true;
+    } catch (error) {
       toast({
         title: 'Permission denied',
-        description: 'Only the project admin can edit tasks',
+        description: error instanceof Error ? error.message : 'Could not edit task',
         variant: 'destructive',
       });
       return false;
     }
-
-    setProjects(projects.map(project => {
-      if (project.id === projectId) {
-        const updatedTasks = project.tasks.map(task => {
-          if (task.id === taskId) {
-            return {
-              ...task,
-              title,
-              description,
-              assignedTo,
-              dueDate,
-              priority
-            };
-          }
-          return task;
-        });
-        
-        toast({
-          title: 'Task updated',
-          description: `Task "${title}" has been updated successfully`,
-        });
-        
-        return { ...project, tasks: updatedTasks };
-      }
-      return project;
-    }));
-    
-    return true;
   };
 
-  const deleteTask = (projectId: string, taskId: string) => {
-    if (!user) return;
-
-    setProjects(projects.map(project => {
-      if (project.id === projectId) {
-        const taskToDelete = project.tasks.find(t => t.id === taskId);
-        if (!taskToDelete) return project;
-        
-        const updatedProject = {
-          ...project,
-          tasks: project.tasks.filter(task => task.id !== taskId)
-        };
-        
-        toast({
-          title: 'Task deleted',
-          description: `Task "${taskToDelete.title}" has been deleted`,
-        });
-        
-        return updatedProject;
-      }
-      return project;
-    }));
+  const deleteTask = async (projectId: string, taskId: string) => {
+    if (!token) return;
+    try {
+      const project = projects.find(p => p.id === projectId);
+      const task = project?.tasks.find(t => t.id === taskId);
+      await apiRequest(`/projects/${projectId}/tasks/${taskId}`, {
+        method: 'DELETE',
+        token,
+      });
+      setProjects(prev =>
+        prev.map(projectItem =>
+          projectItem.id === projectId
+            ? { ...projectItem, tasks: projectItem.tasks.filter(taskItem => taskItem.id !== taskId) }
+            : projectItem
+        )
+      );
+      toast({
+        title: 'Task deleted',
+        description: task ? `Task "${task.title}" has been deleted` : 'Task deleted',
+      });
+      fetchData();
+    } catch (error) {
+      toast({
+        title: 'Delete task failed',
+        description: error instanceof Error ? error.message : 'Could not delete task',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const completeTask = (projectId: string, taskId: string) => {
-    if (!user) return;
-
-    setProjects(projects.map(project => {
-      if (project.id === projectId) {
-        const updatedTasks = project.tasks.map(task => {
-          if (task.id === taskId && !task.completed) {
-            // Create notifications for all project members
-            project.members.forEach(memberId => {
-              if (memberId !== user.id) {
-                const newNotification: Notification = {
-                  id: `notification-${Date.now()}-${memberId}`,
-                  message: `${user.name} completed task "${task.title}" in project "${project.name}"`,
-                  createdAt: new Date().toISOString(),
-                  read: false,
-                };
-                
-                // Store notification for each member
-                const memberNotifications = JSON.parse(localStorage.getItem(`notifications-${memberId}`) || '[]');
-                localStorage.setItem(
-                  `notifications-${memberId}`, 
-                  JSON.stringify([...memberNotifications, newNotification])
-                );
+  const completeTask = async (projectId: string, taskId: string) => {
+    if (!token) return;
+    try {
+      const updated = await apiRequest<Task>(`/projects/${projectId}/tasks/${taskId}/complete`, {
+        method: 'POST',
+        token,
+      });
+      setProjects(prev =>
+        prev.map(project =>
+          project.id === projectId
+            ? {
+                ...project,
+                tasks: project.tasks.map(task => (task.id === taskId ? updated : task)),
               }
-            });
-            
-            toast({
-              title: 'Task completed',
-              description: `Task "${task.title}" has been marked as completed`,
-            });
-            
-            return { ...task, completed: true, completedBy: user.id };
-          }
-          return task;
-        });
-        
-        return { ...project, tasks: updatedTasks };
-      }
-      return project;
-    }));
+            : project
+        )
+      );
+      toast({
+        title: 'Task completed',
+        description: `Task "${updated.title}" has been marked as completed`,
+      });
+      fetchData();
+    } catch (error) {
+      toast({
+        title: 'Complete task failed',
+        description: error instanceof Error ? error.message : 'Could not complete task',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const completeAssignedTask = (projectId: string, taskId: string) => {
+  const completeAssignedTask = async (projectId: string, taskId: string) => {
     if (!user) return false;
-
-    const project = projects.find(p => p.id === projectId);
-    const task = project?.tasks.find(t => t.id === taskId);
-
+    const task = projects
+      .find(project => project.id === projectId)
+      ?.tasks.find(taskItem => taskItem.id === taskId);
     if (!task || task.assignedTo !== user.id) {
       return false;
     }
-
-    completeTask(projectId, taskId);
+    await completeTask(projectId, taskId);
     return true;
   };
 
-  const createPersonalTask = (title: string, description: string = '') => {
-    if (!user) return;
-
-    const newTask: PersonalTask = {
-      id: `personal-task-${Date.now()}`,
-      title,
-      description,
-      completed: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    setPersonalTasks([...personalTasks, newTask]);
-
-    toast({
-      title: 'Personal task created',
-      description: `Task "${title}" was added to your personal list`,
-    });
+  const createPersonalTask = async (title: string, description = '') => {
+    if (!token) return;
+    try {
+      const created = await apiRequest<PersonalTask>('/personal-tasks', {
+        method: 'POST',
+        token,
+        body: { title, description },
+      });
+      setPersonalTasks(prev => [...prev, created]);
+      toast({
+        title: 'Personal task created',
+        description: `Task "${title}" was added to your personal list`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Create failed',
+        description: error instanceof Error ? error.message : 'Could not create personal task',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const editPersonalTask = (taskId: string, title: string, description: string) => {
-    if (!user) return false;
-
-    const taskExists = personalTasks.some(task => task.id === taskId);
-    if (!taskExists) return false;
-
-    setPersonalTasks(personalTasks.map(task =>
-      task.id === taskId
-        ? { ...task, title, description }
-        : task
-    ));
-
-    toast({
-      title: 'Personal task updated',
-      description: `Task "${title}" was updated`,
-    });
-
-    return true;
+  const editPersonalTask = async (taskId: string, title: string, description: string) => {
+    if (!token) return false;
+    try {
+      const updated = await apiRequest<PersonalTask>(`/personal-tasks/${taskId}`, {
+        method: 'PATCH',
+        token,
+        body: { title, description },
+      });
+      setPersonalTasks(prev => prev.map(task => (task.id === taskId ? updated : task)));
+      toast({
+        title: 'Personal task updated',
+        description: `Task "${title}" was updated`,
+      });
+      return true;
+    } catch (error) {
+      toast({
+        title: 'Update failed',
+        description: error instanceof Error ? error.message : 'Could not update personal task',
+        variant: 'destructive',
+      });
+      return false;
+    }
   };
 
-  const togglePersonalTask = (taskId: string) => {
-    if (!user) return;
-
-    setPersonalTasks(personalTasks.map(task =>
-      task.id === taskId
-        ? { ...task, completed: !task.completed }
-        : task
-    ));
+  const togglePersonalTask = async (taskId: string) => {
+    if (!token) return;
+    const task = personalTasks.find(taskItem => taskItem.id === taskId);
+    if (!task) return;
+    try {
+      const updated = await apiRequest<PersonalTask>(`/personal-tasks/${taskId}`, {
+        method: 'PATCH',
+        token,
+        body: { completed: !task.completed },
+      });
+      setPersonalTasks(prev => prev.map(taskItem => (taskItem.id === taskId ? updated : taskItem)));
+    } catch (error) {
+      toast({
+        title: 'Update failed',
+        description: error instanceof Error ? error.message : 'Could not update personal task',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const deletePersonalTask = (taskId: string) => {
-    if (!user) return;
-
-    const taskToDelete = personalTasks.find(task => task.id === taskId);
-    if (!taskToDelete) return;
-
-    setPersonalTasks(personalTasks.filter(task => task.id !== taskId));
-
-    toast({
-      title: 'Personal task deleted',
-      description: `Task "${taskToDelete.title}" was removed from your personal list`,
-    });
+  const deletePersonalTask = async (taskId: string) => {
+    if (!token) return;
+    const task = personalTasks.find(taskItem => taskItem.id === taskId);
+    try {
+      await apiRequest(`/personal-tasks/${taskId}`, {
+        method: 'DELETE',
+        token,
+      });
+      setPersonalTasks(prev => prev.filter(taskItem => taskItem.id !== taskId));
+      toast({
+        title: 'Personal task deleted',
+        description: task ? `Task "${task.title}" was removed from your personal list` : 'Task removed',
+      });
+    } catch (error) {
+      toast({
+        title: 'Delete failed',
+        description: error instanceof Error ? error.message : 'Could not delete personal task',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const markNotificationAsRead = (notificationId: string) => {
-    if (!user) return;
-    
-    const updatedNotifications = notifications.map(notification => 
-      notification.id === notificationId ? { ...notification, read: true } : notification
-    );
-    
-    setNotifications(updatedNotifications);
+  const markNotificationAsRead = async (notificationId: string) => {
+    if (!token) return;
+    try {
+      await apiRequest(`/notifications/${notificationId}/mark-read`, {
+        method: 'POST',
+        token,
+      });
+      setNotifications(prev =>
+        prev.map(notification =>
+          notification.id === notificationId ? { ...notification, read: true } : notification
+        )
+      );
+    } catch {
+      // no-op
+    }
   };
 
-  const clearReadNotifications = () => {
-    if (!user) return;
-    
-    const unreadNotifications = notifications.filter(notification => !notification.read);
-    setNotifications(unreadNotifications);
-    localStorage.setItem(`notifications-${user.id}`, JSON.stringify(unreadNotifications));
-    
-    toast({
-      title: 'Notifications cleared',
-      description: 'All read notifications have been cleared',
-    });
+  const clearReadNotifications = async () => {
+    if (!token) return;
+    try {
+      await apiRequest('/notifications/clear-read', {
+        method: 'POST',
+        token,
+      });
+      setNotifications(prev => prev.filter(notification => !notification.read));
+      toast({
+        title: 'Notifications cleared',
+        description: 'All read notifications have been cleared',
+      });
+    } catch (error) {
+      toast({
+        title: 'Clear failed',
+        description: error instanceof Error ? error.message : 'Could not clear notifications',
+        variant: 'destructive',
+      });
+    }
   };
 
   const hasUnreadNotifications = notifications.some(notification => !notification.read);
-  const assignedProjectTasks = user
-    ? projects.flatMap(project =>
-        project.tasks
-          .filter(task => task.assignedTo === user.id)
-          .map(task => ({
-            projectId: project.id,
-            projectName: project.name,
-            task,
-          }))
-      )
-    : [];
+  const assignedProjectTasks = useMemo(
+    () =>
+      user
+        ? projects.flatMap(project =>
+            project.tasks
+              .filter(task => task.assignedTo === user.id)
+              .map(task => ({
+                projectId: project.id,
+                projectName: project.name,
+                task,
+              }))
+          )
+        : [],
+    [projects, user]
+  );
 
   const value = {
     projects,
@@ -575,9 +528,5 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     hasUnreadNotifications,
   };
 
-  return (
-    <ProjectContext.Provider value={value}>
-      {children}
-    </ProjectContext.Provider>
-  );
+  return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 };

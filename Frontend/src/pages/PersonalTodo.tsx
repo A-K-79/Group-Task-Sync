@@ -31,9 +31,9 @@ const PersonalTodo = () => {
     [personalTasks]
   );
 
-  const handleCreatePersonalTask = () => {
+  const handleCreatePersonalTask = async () => {
     if (!title.trim()) return;
-    createPersonalTask(title.trim(), description.trim());
+    await createPersonalTask(title.trim(), description.trim());
     setTitle('');
     setDescription('');
   };
@@ -44,9 +44,9 @@ const PersonalTodo = () => {
     setEditingDescription(taskDescription);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingTaskId || !editingTitle.trim()) return;
-    const updated = editPersonalTask(editingTaskId, editingTitle.trim(), editingDescription.trim());
+    const updated = await editPersonalTask(editingTaskId, editingTitle.trim(), editingDescription.trim());
     if (updated) {
       setEditingTaskId(null);
       setEditingTitle('');
@@ -124,7 +124,7 @@ const PersonalTodo = () => {
                         Created {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}
                       </p>
                       <div className="flex gap-2">
-                        <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => togglePersonalTask(task.id)}>
+                        <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => void togglePersonalTask(task.id)}>
                           <Check size={14} />
                         </Button>
                         <Button
@@ -139,7 +139,7 @@ const PersonalTodo = () => {
                           size="icon"
                           variant="outline"
                           className="h-8 w-8 text-red-500 hover:text-red-600"
-                          onClick={() => deletePersonalTask(task.id)}
+                          onClick={() => void deletePersonalTask(task.id)}
                         >
                           <Trash size={14} />
                         </Button>
@@ -185,7 +185,7 @@ const PersonalTodo = () => {
                         size="sm"
                         variant="outline"
                         disabled={task.completed}
-                        onClick={() => completeAssignedTask(projectId, task.id)}
+                        onClick={() => void completeAssignedTask(projectId, task.id)}
                       >
                         <Check size={14} className="mr-1" />
                         Mark Complete

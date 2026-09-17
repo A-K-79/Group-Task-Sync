@@ -46,28 +46,6 @@ const Index = () => {
   const { user, isLoading, login, signup } = useAuth();
   const [activeTab, setActiveTab] = useState("login");
 
-  // Initialize example users on first load
-  useEffect(() => {
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    if (users.length === 0) {
-      const exampleUsers = [
-        {
-          id: 'user-1',
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'password123',
-        },
-        {
-          id: 'user-2',
-          name: 'Jane Smith',
-          email: 'jane@example.com',
-          password: 'password123',
-        },
-      ];
-      localStorage.setItem('users', JSON.stringify(exampleUsers));
-    }
-  }, []);
-
   // Redirect to dashboard if user is already logged in
   useEffect(() => {
     if (user && !isLoading) {
@@ -191,9 +169,6 @@ const Index = () => {
                       >
                         Sign up
                       </button>
-                    </p>
-                    <p className="mt-2">
-                      Demo: john@example.com / password123
                     </p>
                   </div>
                 </TabsContent>

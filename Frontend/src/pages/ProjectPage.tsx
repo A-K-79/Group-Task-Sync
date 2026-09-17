@@ -45,13 +45,7 @@ const ProjectPage = () => {
   // Get project members details
   useEffect(() => {
     if (project) {
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      const members = project.members.map(memberId => {
-        const user = users.find((u: any) => u.id === memberId);
-        return user ? { id: user.id, name: user.name, email: user.email } : null;
-      }).filter(Boolean);
-      
-      setProjectMembers(members);
+      setProjectMembers(project.memberDetails || []);
     }
   }, [project]);
 
