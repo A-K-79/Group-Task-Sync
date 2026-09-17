@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/api';
@@ -102,7 +102,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!token || !user) {
       setProjects([]);
       setNotifications([]);
@@ -126,11 +126,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         variant: 'destructive',
       });
     }
-  };
+  }, [token, user]);
 
   useEffect(() => {
     fetchData();
-  }, [token, user]);
+  }, [fetchData]);
 
   const createProject = async (name: string, description: string) => {
     if (!token) return;

@@ -36,6 +36,13 @@ npm i
 npm run dev
 ```
 
+### Backend integration
+
+This frontend now expects a Django API backend.
+
+- Default API URL: `http://localhost:8000/api`
+- Override with env var: `VITE_API_BASE_URL`
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).
